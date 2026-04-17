@@ -1,0 +1,555 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  male
+  female
+  non_binary
+  prefer_not_say
+}
+
+enum VerificationStatus {
+  none
+  phone
+  id_verified
+  suspended
+}
+
+enum PlanVisibility {
+  public
+  private
+  unlisted
+}
+
+enum PlanJoinType {
+  open
+  approval_required
+}
+
+enum PlanStatus {
+  draft
+  published
+  cancelled
+  completed
+}
+
+enum ParticipantStatus {
+  pending
+  approved
+  joined
+  left
+  removed
+  no_show
+}
+
+enum AttendanceStatus {
+  unknown
+  attended
+  absent
+  excused
+}
+
+enum CommunityVisibility {
+  public
+  private
+}
+
+enum CommunityMemberRole {
+  member
+  moderator
+  admin
+}
+
+enum CommunityMemberStatus {
+  pending
+  active
+  banned
+}
+
+enum NotificationType {
+  otp
+  join_request
+  join_accepted
+  plan_reminder
+  chat_message
+  nearby_trending
+  community_invite
+  safety_report_update
+  system
+}
+
+enum ReportTargetType {
+  user
+  plan
+  message
+  community
+}
+
+enum ReportStatus {
+  open
+  reviewing
+  resolved
+  dismissed
+}
+
+model City {
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  countryCode  String   @default("IN") @map("country_code")
+  centerLat    Float    @map("center_lat")
+  centerLng    Float    @map("center_lng")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  localities   Locality[]
+  users        User[]
+  plans        Plan[]
+  communities  Community[]
+}
+
+model Locality {
+  id          String   @id @default(uuid())
+  cityId      String   @map("city_id")
+  name        String
+  slug        String
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  city   City   @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  users  User[]
+  plans  Plan[]
+
+  @@unique([cityId, slug])
+  @@index([cityId])
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique
+  name      String
+  icon      String?
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  plans     Plan[]
+}
+
+model Vibe {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique
+  name      String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  plans     Plan[]
+  userVibes UserVibe[]
+}
+
+model Interest {
+  id           Int            @id @default(autoincrement())
+  slug         String         @unique
+  name         String
+  isActive     Boolean        @default(true) @map("is_active")
+  userInterests UserInterest[]
+}
+
+model User {
+  id                   String              @id @default(uuid())
+  phone                String              @unique
+  phoneVerifiedAt      DateTime?           @map("phone_verified_at")
+  email                String?             @unique
+  name                 String
+  username             String              @unique
+  bio                  String?
+  dob                  DateTime?           @db.Date
+  ageBand              String?             @map("age_band")
+  gender               Gender?
+  cityId               String?             @map("city_id")
+  localityId           String?             @map("locality_id")
+  localityText         String?             @map("locality_text")
+  lat                  Float?
+  lng                  Float?
+  locationUpdatedAt    DateTime?           @map("location_updated_at")
+  profileImageUrl      String?             @map("profile_image_url")
+  verificationStatus   VerificationStatus  @default(phone) @map("verification_status")
+  attendanceScore      Decimal             @default(50) @map("attendance_score") @db.Decimal(5, 2)
+  hostScore            Decimal             @default(50) @map("host_score") @db.Decimal(5, 2)
+  onboardingCompleted  Boolean             @default(false) @map("onboarding_completed")
+  privacySettings      Json                @default("{}") @map("privacy_settings")
+  safetyPreferences    Json                @default("{}") @map("safety_preferences")
+  isBanned             Boolean             @default(false) @map("is_banned")
+  bannedUntil          DateTime?           @map("banned_until")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+  deletedAt            DateTime?           @map("deleted_at")
+
+  city              City?              @relation(fields: [cityId], references: [id])
+  locality          Locality?          @relation(fields: [localityId], references: [id])
+  interests         UserInterest[]
+  vibes             UserVibe[]
+  photos            UserPhoto[]
+  refreshTokens     RefreshToken[]
+  devices           UserDevice[]
+  hostedPlans       Plan[]             @relation("PlanHost")
+  participations    PlanParticipant[]
+  sentMessages      PlanMessage[]
+  notifications     Notification[]
+  blocksOutgoing    UserBlock[]        @relation("Blocker")
+  blocksIncoming    UserBlock[]        @relation("Blocked")
+  reportsFiled      Report[]           @relation("Reporter")
+  planRatings       PlanRating[]       @relation("Rater")
+  verificationReqs   VerificationRequest[]
+  communityMembers   CommunityMember[]
+  communityPosts     CommunityPost[]
+  hostRatingsReceived PlanRating[]       @relation("HostRated")
+}
+
+model UserInterest {
+  userId     String @map("user_id")
+  interestId Int    @map("interest_id")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+}
+
+model UserVibe {
+  userId    String  @map("user_id")
+  vibeId    Int     @map("vibe_id")
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vibe Vibe @relation(fields: [vibeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, vibeId])
+  @@index([userId, isPrimary])
+}
+
+model UserPhoto {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  url       String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  tokenHash  String    @map("token_hash")
+  deviceId   String?   @map("device_id")
+  userAgent  String?   @map("user_agent")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model UserDevice {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  fcmToken   String?  @map("fcm_token")
+  platform   String?
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fcmToken])
+}
+
+model UserBlock {
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+}
+
+model Plan {
+  id                   String         @id @default(uuid())
+  hostUserId           String         @map("host_user_id")
+  title                String
+  description          String?
+  categoryId           Int            @map("category_id")
+  vibeId               Int            @map("vibe_id")
+  cityId               String         @map("city_id")
+  localityId           String?        @map("locality_id")
+  locationName         String         @map("location_name")
+  lat                  Float
+  lng                  Float
+  startTime            DateTime       @map("start_time")
+  endTime              DateTime?      @map("end_time")
+  maxParticipants      Int            @map("max_participants")
+  visibility           PlanVisibility @default(public)
+  joinType             PlanJoinType   @default(open) @map("join_type")
+  verifiedOnly         Boolean        @default(false) @map("verified_only")
+  womenOnly            Boolean        @default(false) @map("women_only")
+  hideExactUntilJoin   Boolean        @default(true) @map("hide_exact_until_join")
+  status               PlanStatus     @default(published)
+  isFeatured           Boolean        @default(false) @map("is_featured")
+  recurringRule        Json?          @map("recurring_rule")
+  costSplitNote        String?        @map("cost_split_note")
+  bringItemsNote       String?        @map("bring_items_note")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+  cancelledAt          DateTime?      @map("cancelled_at")
+
+  host         User              @relation("PlanHost", fields: [hostUserId], references: [id])
+  category     Category          @relation(fields: [categoryId], references: [id])
+  vibe         Vibe              @relation(fields: [vibeId], references: [id])
+  city         City              @relation(fields: [cityId], references: [id])
+  locality     Locality?         @relation(fields: [localityId], references: [id])
+  participants PlanParticipant[]
+  chatRoom     PlanChatRoom?
+  communities  PlanCommunity[]
+  reports      Report[]          @relation("ReportPlan")
+  ratings      PlanRating[]
+
+  @@index([cityId, startTime])
+  @@index([hostUserId])
+  @@index([categoryId])
+  @@index([vibeId])
+  @@index([lat, lng])
+}
+
+model PlanParticipant {
+  id                String              @id @default(uuid())
+  planId            String              @map("plan_id")
+  userId            String              @map("user_id")
+  status            ParticipantStatus   @default(joined)
+  joinedAt          DateTime            @default(now()) @map("joined_at")
+  leftAt            DateTime?           @map("left_at")
+  attendanceStatus  AttendanceStatus    @default(unknown) @map("attendance_status")
+  userRatedHostAt   DateTime?           @map("user_rated_host_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, userId])
+  @@index([planId])
+  @@index([userId])
+  @@index([planId, status])
+}
+
+model PlanChatRoom {
+  id        String   @id @default(uuid())
+  planId    String   @unique @map("plan_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  plan     Plan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  messages PlanMessage[]
+}
+
+model PlanMessage {
+  id          String    @id @default(uuid())
+  roomId      String    @map("room_id")
+  senderId    String?   @map("sender_id")
+  body        String
+  messageType String    @default("text") @map("message_type")
+  isPinned    Boolean   @default(false) @map("is_pinned")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
+  flagged     Boolean   @default(false)
+
+  room   PlanChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender User?        @relation(fields: [senderId], references: [id])
+
+  reports Report[] @relation("ReportMessage")
+
+  @@index([roomId, createdAt])
+}
+
+model Community {
+  id            String               @id @default(uuid())
+  cityId        String               @map("city_id")
+  name          String
+  slug          String
+  description   String?
+  visibility    CommunityVisibility  @default(public)
+  coverImageUrl String?              @map("cover_image_url")
+  tags          String[]             @default([])
+  isCurated     Boolean              @default(false) @map("is_curated")
+  createdById   String?              @map("created_by_id")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  city      City               @relation(fields: [cityId], references: [id])
+  members   CommunityMember[]
+  posts     CommunityPost[]
+  planLinks PlanCommunity[]
+  reports   Report[]           @relation("ReportCommunity")
+
+  @@unique([cityId, slug])
+  @@index([cityId])
+}
+
+model CommunityMember {
+  id           String                 @id @default(uuid())
+  communityId  String                 @map("community_id")
+  userId       String                 @map("user_id")
+  role         CommunityMemberRole    @default(member)
+  status       CommunityMemberStatus  @default(active)
+  joinedAt     DateTime               @default(now()) @map("joined_at")
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+  @@index([userId])
+  @@index([communityId])
+}
+
+model CommunityPost {
+  id           String    @id @default(uuid())
+  communityId  String    @map("community_id")
+  authorId     String    @map("author_id")
+  body         String
+  createdAt    DateTime  @default(now()) @map("created_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
+}
+
+model PlanCommunity {
+  planId      String @map("plan_id")
+  communityId String @map("community_id")
+
+  plan      Plan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@id([planId, communityId])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  body      String?
+  data      Json             @default("{}")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Report {
+  id                String           @id @default(uuid())
+  reporterId        String           @map("reporter_id")
+  targetType        ReportTargetType @map("target_type")
+  targetUserId      String?          @map("target_user_id")
+  targetPlanId      String?          @map("target_plan_id")
+  targetMessageId   String?          @map("target_message_id")
+  targetCommunityId String?          @map("target_community_id")
+  reason            String
+  details           String?
+  status            ReportStatus     @default(open)
+  resolvedAt        DateTime?        @map("resolved_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  reporter  User         @relation("Reporter", fields: [reporterId], references: [id])
+  plan      Plan?        @relation("ReportPlan", fields: [targetPlanId], references: [id])
+  message   PlanMessage? @relation("ReportMessage", fields: [targetMessageId], references: [id])
+  community Community?   @relation("ReportCommunity", fields: [targetCommunityId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+model PlanRating {
+  id               String   @id @default(uuid())
+  planId           String   @map("plan_id")
+  raterUserId      String   @map("rater_user_id")
+  hostUserId       String   @map("host_user_id")
+  hostStars        Int?     @map("host_stars")
+  reliabilityNotes String?  @map("reliability_notes")
+  noShowFlag       Boolean  @default(false) @map("no_show_flag")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  plan  Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  rater User @relation("Rater", fields: [raterUserId], references: [id])
+  host  User @relation("HostRated", fields: [hostUserId], references: [id])
+
+  @@unique([planId, raterUserId])
+  @@index([hostUserId])
+}
+
+model VerificationRequest {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  documentUrl  String?   @map("document_url")
+  status       String    @default("pending")
+  reviewedBy   String?   @map("reviewed_by")
+  reviewedAt   DateTime? @map("reviewed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+model AdminUser {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  role         String        @default("moderator")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  actions      AdminAction[]
+}
+
+model AdminAction {
+  id         BigInt   @id @default(autoincrement())
+  adminId    String   @map("admin_id")
+  actionType String   @map("action_type")
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id")
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  admin AdminUser @relation(fields: [adminId], references: [id])
+
+  @@index([createdAt])
+}
+
+model AnalyticsEvent {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @map("user_id")
+  eventName  String   @map("event_name")
+  properties Json     @default("{}")
+  cityId     String?  @map("city_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([eventName, createdAt])
+  @@index([cityId, createdAt])
+}
+
+model OtpAttempt {
+  id           BigInt   @id @default(autoincrement())
+  phone        String
+  ipHash       String?  @map("ip_hash")
+  attemptedAt  DateTime @default(now()) @map("attempted_at")
+  success      Boolean  @default(false)
+
+  @@index([phone, attemptedAt])
+}
