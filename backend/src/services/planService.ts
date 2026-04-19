@@ -11,6 +11,7 @@ import {
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/AppError.js";
 import { distanceKm } from "../utils/distance.js";
+import { staticMapPreviewUrl } from "../utils/staticMapPreview.js";
 
 function encodeCursor(start: Date, id: string): string {
   return Buffer.from(
@@ -230,14 +231,52 @@ export async function listPlans(
   return { items, nextCursor };
 }
 
+/** Rough bounding box for a circle (Haversine filter applied after query). */
+function boundingBoxFromCenterKm(
+  lat: number,
+  lng: number,
+  radiusKm: number
+) {
+  const latPad = radiusKm / 111;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const safeCos = Math.abs(cosLat) < 1e-3 ? 1e-3 : cosLat;
+  const lngPad = radiusKm / (111 * safeCos);
+  return {
+    north: lat + latPad,
+    south: lat - latPad,
+    east: lng + lngPad,
+    west: lng - lngPad,
+  };
+}
+
 export async function mapPlans(q: {
   cityId: string;
-  north: number;
-  south: number;
-  east: number;
-  west: number;
+  north?: number;
+  south?: number;
+  east?: number;
+  west?: number;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
   category?: string;
 }) {
+  const useRadius =
+    q.lat != null &&
+    q.lng != null &&
+    q.radiusKm != null &&
+    Number.isFinite(q.lat) &&
+    Number.isFinite(q.lng) &&
+    Number.isFinite(q.radiusKm);
+
+  const box = useRadius
+    ? boundingBoxFromCenterKm(q.lat!, q.lng!, q.radiusKm!)
+    : {
+        north: q.north!,
+        south: q.south!,
+        east: q.east!,
+        west: q.west!,
+      };
+
   let categoryId: number | undefined;
   if (q.category) {
     const cat = await prisma.category.findFirst({
@@ -247,18 +286,20 @@ export async function mapPlans(q: {
   }
 
   const now = new Date();
-  const plans = await prisma.plan.findMany({
+  let plans = await prisma.plan.findMany({
     where: {
       cityId: q.cityId,
       status: PlanStatus.published,
       visibility: PlanVisibility.public,
       startTime: { gte: now },
-      lat: { gte: q.south, lte: q.north },
-      lng: { gte: q.west, lte: q.east },
+      lat: { gte: box.south, lte: box.north },
+      lng: { gte: box.west, lte: box.east },
       ...(categoryId != null ? { categoryId } : {}),
     },
     select: {
       id: true,
+      title: true,
+      locationName: true,
       lat: true,
       lng: true,
       startTime: true,
@@ -269,17 +310,30 @@ export async function mapPlans(q: {
       _count: { select: { participants: true } },
     },
   });
-  return plans.map((p) => ({
-    id: p.id,
-    lat: p.lat,
-    lng: p.lng,
-    startTime: p.startTime.toISOString(),
-    categoryId: p.categoryId,
-    participantCount: p._count.participants,
-    maxParticipants: p.maxParticipants,
-    verifiedOnly: p.verifiedOnly,
-    womenOnly: p.womenOnly,
-  }));
+
+  if (useRadius) {
+    plans = plans.filter(
+      (p) => distanceKm(q.lat!, q.lng!, p.lat, p.lng) <= q.radiusKm!
+    );
+  }
+
+  return plans.map((p) => {
+    const mapPreviewUrl = staticMapPreviewUrl(p.lat, p.lng);
+    return {
+      id: p.id,
+      title: p.title,
+      locationName: p.locationName,
+      lat: p.lat,
+      lng: p.lng,
+      startTime: p.startTime.toISOString(),
+      categoryId: p.categoryId,
+      participantCount: p._count.participants,
+      maxParticipants: p.maxParticipants,
+      verifiedOnly: p.verifiedOnly,
+      womenOnly: p.womenOnly,
+      ...(mapPreviewUrl ? { mapPreviewUrl } : {}),
+    };
+  });
 }
 
 export async function joinPlan(planId: string, userId: string) {
@@ -451,6 +505,11 @@ export async function getPlanById(planId: string, viewerId?: string) {
         myParticipation.status === ParticipantStatus.approved
       ));
 
+  const mapPreviewUrl =
+    !hideExact
+      ? staticMapPreviewUrl(plan.lat, plan.lng)
+      : undefined;
+
   return {
     id: plan.id,
     title: plan.title,
@@ -495,6 +554,7 @@ export async function getPlanById(planId: string, viewerId?: string) {
     costSplitNote: plan.costSplitNote,
     bringItemsNote: plan.bringItemsNote,
     trustBadges: trustBadgesForHost(plan.host),
+    ...(mapPreviewUrl ? { mapPreviewUrl } : {}),
   };
 }
 
@@ -663,6 +723,7 @@ function toPlanCard(
     lat != null && lng != null
       ? distanceKm(lat, lng, p.lat, p.lng)
       : undefined;
+  const mapPreviewUrl = staticMapPreviewUrl(p.lat, p.lng);
   return {
     id: p.id,
     title: p.title,
@@ -691,5 +752,6 @@ function toPlanCard(
       hostScore: Number(p.host.hostScore),
     },
     trustBadges: trustBadgesForHost(p.host),
+    ...(mapPreviewUrl ? { mapPreviewUrl } : {}),
   };
 }

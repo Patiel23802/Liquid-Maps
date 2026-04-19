@@ -1,12 +1,22 @@
 import { PlanStatus, PlanVisibility } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { distanceKm } from "../utils/distance.js";
+import { staticMapPreviewUrl } from "../utils/staticMapPreview.js";
+
+function plansWithinRadius<
+  T extends { lat: number; lng: number },
+>(plans: T[], lat: number, lng: number, radiusKm: number): T[] {
+  return plans.filter(
+    (p) => distanceKm(lat, lng, p.lat, p.lng) <= radiusKm
+  );
+}
 
 export async function homeFeed(
   userId: string,
   cityId: string,
   lat?: number,
-  lng?: number
+  lng?: number,
+  radiusKm?: number
 ) {
   const now = new Date();
   const twoHours = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -113,39 +123,61 @@ export async function homeFeed(
       }),
     ]);
 
+  const useRadius =
+    lat != null &&
+    lng != null &&
+    radiusKm != null &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Number.isFinite(radiusKm);
+
+  const hn = useRadius
+    ? plansWithinRadius(happeningNow, lat!, lng!, radiusKm!)
+    : happeningNow;
+  const ss = useRadius
+    ? plansWithinRadius(startingSoon, lat!, lng!, radiusKm!)
+    : startingSoon;
+  const fyv = useRadius
+    ? plansWithinRadius(forYourVibe, lat!, lng!, radiusKm!)
+    : forYourVibe;
+
   const mapCard = (
     p: (typeof happeningNow)[0]
-  ): Record<string, unknown> => ({
-    id: p.id,
-    title: p.title,
-    category: {
-      id: p.category.id,
-      name: p.category.name,
-      slug: p.category.slug,
-    },
-    vibe: { id: p.vibe.id, name: p.vibe.name, slug: p.vibe.slug },
-    startTime: p.startTime.toISOString(),
-    locationName: p.locationName,
-    lat: p.lat,
-    lng: p.lng,
-    distanceKm:
-      lat != null && lng != null
-        ? Math.round(distanceKm(lat, lng, p.lat, p.lng) * 10) / 10
-        : undefined,
-    participantCount: p._count.participants,
-    maxParticipants: p.maxParticipants,
-    verifiedOnly: p.verifiedOnly,
-    womenOnly: p.womenOnly,
-    joinType: p.joinType,
-    host: {
-      id: p.host.id,
-      username: p.host.username,
-      name: p.host.name,
-      profileImageUrl: p.host.profileImageUrl,
-      verificationStatus: p.host.verificationStatus,
-      hostScore: Number(p.host.hostScore),
-    },
-  });
+  ): Record<string, unknown> => {
+    const mapPreviewUrl = staticMapPreviewUrl(p.lat, p.lng);
+    return {
+      id: p.id,
+      title: p.title,
+      category: {
+        id: p.category.id,
+        name: p.category.name,
+        slug: p.category.slug,
+      },
+      vibe: { id: p.vibe.id, name: p.vibe.name, slug: p.vibe.slug },
+      startTime: p.startTime.toISOString(),
+      locationName: p.locationName,
+      lat: p.lat,
+      lng: p.lng,
+      distanceKm:
+        lat != null && lng != null
+          ? Math.round(distanceKm(lat, lng, p.lat, p.lng) * 10) / 10
+          : undefined,
+      participantCount: p._count.participants,
+      maxParticipants: p.maxParticipants,
+      verifiedOnly: p.verifiedOnly,
+      womenOnly: p.womenOnly,
+      joinType: p.joinType,
+      host: {
+        id: p.host.id,
+        username: p.host.username,
+        name: p.host.name,
+        profileImageUrl: p.host.profileImageUrl,
+        verificationStatus: p.host.verificationStatus,
+        hostScore: Number(p.host.hostScore),
+      },
+      ...(mapPreviewUrl ? { mapPreviewUrl } : {}),
+    };
+  };
 
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const trendingCategories = await prisma.plan.groupBy({
@@ -165,9 +197,9 @@ export async function homeFeed(
   );
 
   return {
-    happeningNow: happeningNow.map(mapCard),
-    startingSoon: startingSoon.map(mapCard),
-    forYourVibe: forYourVibe.map(mapCard),
+    happeningNow: hn.map(mapCard),
+    startingSoon: ss.map(mapCard),
+    forYourVibe: fyv.map(mapCard),
     suggestedCommunities: communities.map((c) => ({
       id: c.id,
       name: c.name,

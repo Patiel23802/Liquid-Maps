@@ -14,6 +14,8 @@ const schema = z.object({
   DEV_OTP_CODE: z.string().optional(),
   ADMIN_BOOTSTRAP_EMAIL: z.string().email().optional(),
   ADMIN_BOOTSTRAP_PASSWORD: z.string().min(8).optional(),
+  /** Optional: attach mapPreviewUrl in plan/feed JSON (Static Maps API must be enabled). */
+  GOOGLE_MAPS_STATIC_API_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -33,6 +35,7 @@ function parseEnv(): Env {
     DEV_OTP_CODE: process.env.DEV_OTP_CODE,
     ADMIN_BOOTSTRAP_EMAIL: process.env.ADMIN_BOOTSTRAP_EMAIL,
     ADMIN_BOOTSTRAP_PASSWORD: process.env.ADMIN_BOOTSTRAP_PASSWORD,
+    GOOGLE_MAPS_STATIC_API_KEY: process.env.GOOGLE_MAPS_STATIC_API_KEY,
   };
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {

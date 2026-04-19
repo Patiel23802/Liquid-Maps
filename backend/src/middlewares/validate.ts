@@ -1,9 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
-import type { AnyZodObject, z } from "zod";
+import type { AnyZodObject, z, ZodTypeAny } from "zod";
 
 type Schemas = {
   body?: AnyZodObject;
-  query?: AnyZodObject;
+  /** Supports unions / refinements (e.g. map query: bbox OR center+radius). */
+  query?: ZodTypeAny;
 };
 
 export function validate(schemas: Schemas) {

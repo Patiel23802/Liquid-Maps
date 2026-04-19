@@ -41,7 +41,7 @@ export const listPlansQuerySchema = z.object({
   cursor: z.string().optional(),
 });
 
-export const mapPlansQuerySchema = z.object({
+const mapPlansBboxQuerySchema = z.object({
   cityId: z.string().uuid(),
   north: z.coerce.number(),
   south: z.coerce.number(),
@@ -49,6 +49,20 @@ export const mapPlansQuerySchema = z.object({
   west: z.coerce.number(),
   category: z.string().min(1).max(64).optional(),
 });
+
+const mapPlansRadiusQuerySchema = z.object({
+  cityId: z.string().uuid(),
+  lat: z.coerce.number(),
+  lng: z.coerce.number(),
+  radiusKm: z.coerce.number().min(1).max(100),
+  category: z.string().min(1).max(64).optional(),
+});
+
+/** Viewport bounds, or user location + search radius (km). */
+export const mapPlansQuerySchema = z.union([
+  mapPlansBboxQuerySchema,
+  mapPlansRadiusQuerySchema,
+]);
 
 export const chatMessageSchema = z.object({
   body: z.string().min(1).max(4000),

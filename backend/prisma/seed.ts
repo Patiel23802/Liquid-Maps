@@ -30,6 +30,7 @@ async function main() {
     { name: "Andheri West", slug: "andheri-west" },
     { name: "Powai", slug: "powai" },
     { name: "Marine Drive", slug: "marine-drive" },
+    { name: "Thane", slug: "thane" },
   ];
   for (const l of localities) {
     await prisma.locality.upsert({
@@ -292,11 +293,23 @@ async function main() {
   const catGym = await prisma.category.findUniqueOrThrow({
     where: { slug: "gym" },
   });
+  const catSports = await prisma.category.findUniqueOrThrow({
+    where: { slug: "sports" },
+  });
   const vibeFitness = await prisma.vibe.findUniqueOrThrow({
     where: { slug: "fitness" },
   });
   const vibeFood = await prisma.vibe.findUniqueOrThrow({
     where: { slug: "food" },
+  });
+  const vibeDeepTalk = await prisma.vibe.findUniqueOrThrow({
+    where: { slug: "deep_talk" },
+  });
+  const vibeProductive = await prisma.vibe.findUniqueOrThrow({
+    where: { slug: "productive" },
+  });
+  const catMusic = await prisma.category.findUniqueOrThrow({
+    where: { slug: "music" },
   });
 
   const extraPlans: Array<{
@@ -355,6 +368,75 @@ async function main() {
     },
   ];
 
+  /** Thane railway station area (~19.186°N, 72.966°E) — short walks from the terminus. */
+  const thaneLoc = await prisma.locality.findFirst({
+    where: { slug: "thane", cityId: mumbai.id },
+  });
+  const thaneStationPlans: Array<{
+    title: string;
+    categoryId: number;
+    vibeId: number;
+    lat: number;
+    lng: number;
+    locationName: string;
+    start: number;
+  }> = [
+    {
+      title: "Cutting chai — Thane station east",
+      categoryId: catFood.id,
+      vibeId: vibeChill.id,
+      lat: 19.1866,
+      lng: 72.9665,
+      locationName: "Outside Thane station (east)",
+      start: 35 * 60 * 1000,
+    },
+    {
+      title: "Morning lap — Talao Pali promenade",
+      categoryId: catWalks.id,
+      vibeId: vibeExplore.id,
+      lat: 19.1881,
+      lng: 72.9638,
+      locationName: "Talao Pali, Thane (~6 min from station)",
+      start: 18 * 60 * 60 * 1000,
+    },
+    {
+      title: "Box cricket — station maidan",
+      categoryId: catSports.id,
+      vibeId: vibeFitness.id,
+      lat: 19.1849,
+      lng: 72.9644,
+      locationName: "Maidan near Thane station west",
+      start: 3 * 60 * 60 * 1000,
+    },
+    {
+      title: "Remote work sprint — Starbucks Viviana",
+      categoryId: catCafes.id,
+      vibeId: vibeProductive.id,
+      lat: 19.1824,
+      lng: 72.9692,
+      locationName: "Viviana Mall, Thane (near station)",
+      start: 75 * 60 * 1000,
+    },
+    {
+      title: "Bollywood classics night — INOX Thane",
+      categoryId: catMovies.id,
+      vibeId: vibeChill.id,
+      lat: 19.1874,
+      lng: 72.9681,
+      locationName: "Korum Mall, Thane",
+      start: 6 * 60 * 60 * 1000,
+    },
+    {
+      title: "Open mic — Thane Ghodbunder Road",
+      categoryId: catMusic.id,
+      vibeId: vibeDeepTalk.id,
+      lat: 19.1902,
+      lng: 72.9615,
+      locationName: "Cafe lane, Ghodbunder Rd (Thane)",
+      start: 8 * 60 * 60 * 1000,
+    },
+  ];
+
   for (const ep of extraPlans) {
     const exists = await prisma.plan.findFirst({
       where: { hostUserId: host.id, title: ep.title },
@@ -374,6 +456,32 @@ async function main() {
           lng: ep.lng,
           startTime: new Date(Date.now() + ep.start),
           maxParticipants: 12,
+          joinType: PlanJoinType.open,
+          status: PlanStatus.published,
+        },
+      });
+    }
+  }
+
+  for (const tp of thaneStationPlans) {
+    const exists = await prisma.plan.findFirst({
+      where: { hostUserId: host.id, title: tp.title },
+    });
+    if (!exists) {
+      await prisma.plan.create({
+        data: {
+          hostUserId: host.id,
+          title: tp.title,
+          description: "Seeded near Thane railway station for Liquid Map.",
+          categoryId: tp.categoryId,
+          vibeId: tp.vibeId,
+          cityId: mumbai.id,
+          localityId: thaneLoc?.id ?? null,
+          locationName: tp.locationName,
+          lat: tp.lat,
+          lng: tp.lng,
+          startTime: new Date(Date.now() + tp.start),
+          maxParticipants: 15,
           joinType: PlanJoinType.open,
           status: PlanStatus.published,
         },
