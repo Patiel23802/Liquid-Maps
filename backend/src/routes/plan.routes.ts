@@ -6,6 +6,7 @@ import {
   listPlansQuerySchema,
   mapPlansQuerySchema,
   chatMessageSchema,
+  updatePlanSchema,
 } from "../validators/plan.js";
 import * as planService from "../services/planService.js";
 import * as planChatService from "../services/planChatService.js";
@@ -38,6 +39,68 @@ planRouter.get(
         typeof planService.mapPlans
       >[0];
       const data = await planService.mapPlans(q);
+      res.json({ data });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+planRouter.put(
+  "/:id",
+  requireAuth,
+  validate({ body: updatePlanSchema }),
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const planId = String(req.params.id);
+      const b = req.body as Record<string, unknown>;
+      const data = await planService.updatePlan(planId, req.userId!, {
+        ...(b.title !== undefined && { title: b.title as string }),
+        ...(b.description !== undefined && {
+          description: b.description as string | null,
+        }),
+        ...(b.categoryId !== undefined && {
+          categoryId: b.categoryId as number,
+        }),
+        ...(b.vibeId !== undefined && { vibeId: b.vibeId as number }),
+        ...(b.localityId !== undefined && {
+          localityId: b.localityId as string | null,
+        }),
+        ...(b.locationName !== undefined && {
+          locationName: b.locationName as string,
+        }),
+        ...(b.lat !== undefined && { lat: b.lat as number }),
+        ...(b.lng !== undefined && { lng: b.lng as number }),
+        ...(b.startTime !== undefined && {
+          startTime: new Date(b.startTime as string),
+        }),
+        ...(b.endTime !== undefined && {
+          endTime: b.endTime ? new Date(b.endTime as string) : null,
+        }),
+        ...(b.maxParticipants !== undefined && {
+          maxParticipants: b.maxParticipants as number,
+        }),
+        ...(b.visibility !== undefined && {
+          visibility: b.visibility as "public" | "private" | "unlisted",
+        }),
+        ...(b.joinType !== undefined && {
+          joinType: b.joinType as "open" | "approval_required",
+        }),
+      });
+      res.json({ data });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+planRouter.delete(
+  "/:id",
+  requireAuth,
+  async (req: AuthedRequest, res, next) => {
+    try {
+      const planId = String(req.params.id);
+      const data = await planService.cancelPlan(planId, req.userId!);
       res.json({ data });
     } catch (e) {
       next(e);

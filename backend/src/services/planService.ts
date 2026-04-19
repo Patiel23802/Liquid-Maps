@@ -6,6 +6,7 @@ import {
   Prisma,
   VerificationStatus,
   Gender,
+  NotificationType,
 } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/AppError.js";
@@ -122,6 +123,7 @@ export async function listPlans(
     lat?: number;
     lng?: number;
     radiusKm: number;
+    category?: string;
     categoryId?: number;
     vibeId?: number;
     verifiedOnly?: boolean;
@@ -131,6 +133,14 @@ export async function listPlans(
     cursor?: string;
   }
 ) {
+  let categoryId = q.categoryId;
+  if (categoryId == null && q.category) {
+    const cat = await prisma.category.findFirst({
+      where: { slug: q.category, isActive: true },
+    });
+    if (cat) categoryId = cat.id;
+  }
+
   const now = new Date();
   const c = decodeCursor(q.cursor);
   const where: Prisma.PlanWhereInput = {
@@ -138,7 +148,7 @@ export async function listPlans(
     status: PlanStatus.published,
     visibility: PlanVisibility.public,
     startTime: { gte: now },
-    ...(q.categoryId != null ? { categoryId: q.categoryId } : {}),
+    ...(categoryId != null ? { categoryId } : {}),
     ...(q.vibeId != null ? { vibeId: q.vibeId } : {}),
     ...(q.verifiedOnly ? { verifiedOnly: true } : {}),
     ...(q.womenOnly ? { womenOnly: true } : {}),
@@ -226,7 +236,16 @@ export async function mapPlans(q: {
   south: number;
   east: number;
   west: number;
+  category?: string;
 }) {
+  let categoryId: number | undefined;
+  if (q.category) {
+    const cat = await prisma.category.findFirst({
+      where: { slug: q.category, isActive: true },
+    });
+    if (cat) categoryId = cat.id;
+  }
+
   const now = new Date();
   const plans = await prisma.plan.findMany({
     where: {
@@ -236,6 +255,7 @@ export async function mapPlans(q: {
       startTime: { gte: now },
       lat: { gte: q.south, lte: q.north },
       lng: { gte: q.west, lte: q.east },
+      ...(categoryId != null ? { categoryId } : {}),
     },
     select: {
       id: true,
@@ -337,6 +357,17 @@ export async function joinPlan(planId: string, userId: string) {
         messageType: "system",
       },
     });
+    if (plan.hostUserId !== userId) {
+      await prisma.notification.create({
+        data: {
+          userId: plan.hostUserId,
+          type: NotificationType.system,
+          title: "Someone joined your plan",
+          body: `${user.name} joined “${plan.title}”.`,
+          data: { planId, actorUserId: userId },
+        },
+      });
+    }
   }
 
   return {
@@ -465,6 +496,128 @@ export async function getPlanById(planId: string, viewerId?: string) {
     bringItemsNote: plan.bringItemsNote,
     trustBadges: trustBadgesForHost(plan.host),
   };
+}
+
+export async function updatePlan(
+  planId: string,
+  hostUserId: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    categoryId?: number;
+    vibeId?: number;
+    localityId?: string | null;
+    locationName?: string;
+    lat?: number;
+    lng?: number;
+    startTime?: Date;
+    endTime?: Date | null;
+    maxParticipants?: number;
+    visibility?: PlanVisibility;
+    joinType?: PlanJoinType;
+  }
+) {
+  const plan = await prisma.plan.findUnique({ where: { id: planId } });
+  if (!plan || plan.hostUserId !== hostUserId) {
+    throw new AppError("NOT_FOUND", "Plan not found", 404);
+  }
+  if (
+    plan.status !== PlanStatus.published &&
+    plan.status !== PlanStatus.draft
+  ) {
+    throw new AppError("PLAN_LOCKED", "Plan cannot be edited", 400);
+  }
+
+  await prisma.plan.update({
+    where: { id: planId },
+    data: {
+      ...(patch.title !== undefined && { title: patch.title }),
+      ...(patch.description !== undefined && { description: patch.description }),
+      ...(patch.categoryId !== undefined && { categoryId: patch.categoryId }),
+      ...(patch.vibeId !== undefined && { vibeId: patch.vibeId }),
+      ...(patch.localityId !== undefined && { localityId: patch.localityId }),
+      ...(patch.locationName !== undefined && { locationName: patch.locationName }),
+      ...(patch.lat !== undefined && { lat: patch.lat }),
+      ...(patch.lng !== undefined && { lng: patch.lng }),
+      ...(patch.startTime !== undefined && { startTime: patch.startTime }),
+      ...(patch.endTime !== undefined && { endTime: patch.endTime }),
+      ...(patch.maxParticipants !== undefined && {
+        maxParticipants: patch.maxParticipants,
+      }),
+      ...(patch.visibility !== undefined && { visibility: patch.visibility }),
+      ...(patch.joinType !== undefined && { joinType: patch.joinType }),
+    },
+  });
+  return getPlanById(planId, hostUserId);
+}
+
+export async function cancelPlan(planId: string, hostUserId: string) {
+  const plan = await prisma.plan.findUnique({ where: { id: planId } });
+  if (!plan || plan.hostUserId !== hostUserId) {
+    throw new AppError("NOT_FOUND", "Plan not found", 404);
+  }
+  await prisma.plan.update({
+    where: { id: planId },
+    data: { status: PlanStatus.cancelled, cancelledAt: new Date() },
+  });
+  return { ok: true as const };
+}
+
+export async function listMyHostedPlans(userId: string) {
+  const rows = await prisma.plan.findMany({
+    where: { hostUserId: userId },
+    orderBy: { startTime: "desc" },
+    take: 50,
+    include: {
+      category: true,
+      _count: { select: { participants: true } },
+    },
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    title: p.title,
+    startTime: p.startTime.toISOString(),
+    status: p.status,
+    category: { id: p.category.id, name: p.category.name, slug: p.category.slug },
+    participantCount: p._count.participants,
+  }));
+}
+
+export async function listMyJoinedPlans(userId: string) {
+  const parts = await prisma.planParticipant.findMany({
+    where: {
+      userId,
+      status: { in: [ParticipantStatus.joined, ParticipantStatus.approved] },
+    },
+    include: {
+      plan: {
+        include: {
+          category: true,
+          host: {
+            select: { id: true, name: true, username: true },
+          },
+          _count: { select: { participants: true } },
+        },
+      },
+    },
+    orderBy: { joinedAt: "desc" },
+    take: 50,
+  });
+  return parts
+    .filter((p) => p.plan.hostUserId !== userId)
+    .map((p) => ({
+      id: p.plan.id,
+      title: p.plan.title,
+      startTime: p.plan.startTime.toISOString(),
+      status: p.plan.status,
+      category: {
+        id: p.plan.category.id,
+        name: p.plan.category.name,
+        slug: p.plan.category.slug,
+      },
+      participantCount: p.plan._count.participants,
+      host: p.plan.host,
+    }));
 }
 
 function trustBadgesForHost(host: {

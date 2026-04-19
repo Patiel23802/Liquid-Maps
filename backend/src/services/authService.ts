@@ -1,3 +1,4 @@
+import bcrypt from "bcryptjs";
 import { prisma } from "../config/database.js";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/AppError.js";
@@ -10,6 +11,33 @@ import {
 import { setOtp, verifyOtp, peekOtpForDev } from "./otpStore.js";
 
 const OTP_TTL_MS = 5 * 60 * 1000;
+
+async function issueAuthTokens(userId: string): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}> {
+  const refreshJti = randomToken();
+  const tokenHash = sha256(refreshJti);
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + env.REFRESH_TOKEN_TTL_DAYS);
+
+  await prisma.refreshToken.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  const refreshToken = signRefreshToken(userId, refreshJti);
+  const accessToken = signAccessToken(userId);
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn: env.ACCESS_TOKEN_TTL_SEC,
+  };
+}
 
 function randomOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -43,7 +71,12 @@ export async function verifyOtpAndLogin(
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
-  user: { id: string; phone: string; onboardingCompleted: boolean; username: string | null };
+  user: {
+    id: string;
+    phone: string | null;
+    onboardingCompleted: boolean;
+    username: string | null;
+  };
 }> {
   const ok = verifyOtp(phone, code);
   if (!ok) {
@@ -71,29 +104,90 @@ export async function verifyOtpAndLogin(
     });
   }
 
-  const refreshJti = randomToken();
-  const tokenHash = sha256(refreshJti);
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + env.REFRESH_TOKEN_TTL_DAYS);
-
-  await prisma.refreshToken.create({
-    data: {
-      userId: user.id,
-      tokenHash,
-      expiresAt,
-    },
-  });
-
-  const refreshToken = signRefreshToken(user.id, refreshJti);
-  const accessToken = signAccessToken(user.id);
+  const tokens = await issueAuthTokens(user.id);
 
   return {
-    accessToken,
-    refreshToken,
-    expiresIn: env.ACCESS_TOKEN_TTL_SEC,
+    ...tokens,
     user: {
       id: user.id,
       phone: user.phone,
+      onboardingCompleted: user.onboardingCompleted,
+      username: user.username,
+    },
+  };
+}
+
+export async function signupWithEmail(input: {
+  email: string;
+  password: string;
+  name: string;
+}): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: { id: string; email: string | null; onboardingCompleted: boolean; username: string };
+}> {
+  const email = input.email.trim().toLowerCase();
+  const taken = await prisma.user.findFirst({
+    where: { email, deletedAt: null },
+  });
+  if (taken) {
+    throw new AppError("EMAIL_IN_USE", "Email already registered", 409);
+  }
+
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  const base = email.split("@")[0]!.replace(/[^a-z0-9_]/gi, "").slice(0, 20) || "user";
+  const username = `${base}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash,
+      name: input.name.trim(),
+      username,
+      onboardingCompleted: false,
+    },
+  });
+
+  const tokens = await issueAuthTokens(user.id);
+  return {
+    ...tokens,
+    user: {
+      id: user.id,
+      email: user.email,
+      onboardingCompleted: user.onboardingCompleted,
+      username: user.username,
+    },
+  };
+}
+
+export async function loginWithEmail(
+  email: string,
+  password: string
+): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: { id: string; email: string | null; onboardingCompleted: boolean; username: string };
+}> {
+  const normalized = email.trim().toLowerCase();
+  const user = await prisma.user.findFirst({
+    where: { email: normalized, deletedAt: null, isBanned: false },
+  });
+  if (!user?.passwordHash) {
+    throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
+  }
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  if (!ok) {
+    throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
+  }
+
+  const tokens = await issueAuthTokens(user.id);
+  return {
+    ...tokens,
+    user: {
+      id: user.id,
+      email: user.email,
       onboardingCompleted: user.onboardingCompleted,
       username: user.username,
     },

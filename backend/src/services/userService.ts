@@ -35,6 +35,7 @@ export async function patchMe(
     name?: string;
     username?: string;
     bio?: string | null;
+    discoveryTagline?: string | null;
     email?: string | null;
     cityId?: string | null;
     localityId?: string | null;
@@ -66,6 +67,7 @@ export async function patchMe(
     name,
     username,
     bio,
+    discoveryTagline,
     email,
     cityId,
     localityId,
@@ -84,6 +86,7 @@ export async function patchMe(
         ...(name !== undefined && { name }),
         ...(username !== undefined && { username }),
         ...(bio !== undefined && { bio }),
+        ...(discoveryTagline !== undefined && { discoveryTagline }),
         ...(email !== undefined && { email }),
         ...(cityId !== undefined && { cityId }),
         ...(localityId !== undefined && { localityId }),
@@ -147,6 +150,33 @@ export async function updateLocation(
   });
 }
 
+export async function getUserPublicProfile(userId: string) {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null, isBanned: false },
+    include: {
+      city: true,
+      interests: { include: { interest: true } },
+    },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    bio: user.bio,
+    discoveryTagline: user.discoveryTagline,
+    profileImageUrl: user.profileImageUrl,
+    city: user.city
+      ? { id: user.city.id, name: user.city.name, slug: user.city.slug }
+      : null,
+    interests: user.interests.map((ui) => ({
+      id: ui.interest.id,
+      slug: ui.interest.slug,
+      name: ui.interest.name,
+    })),
+  };
+}
+
 function serializeUser(user: UserWithRelations) {
   const primaryVibe = user.vibes.find((v) => v.isPrimary);
   return {
@@ -156,6 +186,7 @@ function serializeUser(user: UserWithRelations) {
     name: user.name,
     username: user.username,
     bio: user.bio,
+    discoveryTagline: user.discoveryTagline,
     ageBand: user.ageBand,
     gender: user.gender,
     city: user.city

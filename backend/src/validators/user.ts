@@ -9,6 +9,7 @@ export const patchMeSchema = z.object({
     .regex(/^[a-z0-9_]+$/i)
     .optional(),
   bio: z.string().max(500).optional(),
+  discoveryTagline: z.string().max(160).optional().nullable(),
   email: z.string().email().optional().nullable(),
   cityId: z.string().uuid().optional().nullable(),
   localityId: z.string().uuid().optional().nullable(),

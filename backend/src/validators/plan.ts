@@ -28,6 +28,7 @@ export const listPlansQuerySchema = z.object({
   lat: z.coerce.number().optional(),
   lng: z.coerce.number().optional(),
   radiusKm: z.coerce.number().min(0.5).max(100).optional().default(10),
+  category: z.string().min(1).max(64).optional(),
   categoryId: z.coerce.number().int().optional(),
   vibeId: z.coerce.number().int().optional(),
   verifiedOnly: z.coerce.boolean().optional(),
@@ -46,10 +47,27 @@ export const mapPlansQuerySchema = z.object({
   south: z.coerce.number(),
   east: z.coerce.number(),
   west: z.coerce.number(),
+  category: z.string().min(1).max(64).optional(),
 });
 
 export const chatMessageSchema = z.object({
   body: z.string().min(1).max(4000),
+});
+
+export const updatePlanSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).optional().nullable(),
+  categoryId: z.number().int().optional(),
+  vibeId: z.number().int().optional(),
+  localityId: z.string().uuid().optional().nullable(),
+  locationName: z.string().min(1).max(255).optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  startTime: z.string().datetime().optional(),
+  endTime: z.string().datetime().optional().nullable(),
+  maxParticipants: z.number().int().min(2).max(500).optional(),
+  visibility: z.enum(["public", "private", "unlisted"]).optional(),
+  joinType: z.enum(["open", "approval_required"]).optional(),
 });
 
 export const planFeedbackSchema = z.object({

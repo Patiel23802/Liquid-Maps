@@ -6,8 +6,11 @@ import {
   verifyOtpSchema,
   refreshSchema,
   fcmTokenSchema,
+  signupSchema,
+  loginSchema,
 } from "../validators/auth.js";
 import * as authService from "../services/authService.js";
+import * as userService from "../services/userService.js";
 import { requireAuth, type AuthedRequest } from "../middlewares/auth.js";
 import { prisma } from "../config/database.js";
 
@@ -19,6 +22,50 @@ const otpLimiter = rateLimit({
 });
 
 export const authRouter = Router();
+
+authRouter.post(
+  "/signup",
+  validate({ body: signupSchema }),
+  async (req, res, next) => {
+    try {
+      const { email, password, name } = req.body as {
+        email: string;
+        password: string;
+        name: string;
+      };
+      const data = await authService.signupWithEmail({ email, password, name });
+      res.status(201).json({ data });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+authRouter.post(
+  "/login",
+  validate({ body: loginSchema }),
+  async (req, res, next) => {
+    try {
+      const { email, password } = req.body as {
+        email: string;
+        password: string;
+      };
+      const data = await authService.loginWithEmail(email, password);
+      res.json({ data });
+    } catch (e) {
+      next(e);
+    }
+  }
+);
+
+authRouter.get("/me", requireAuth, async (req: AuthedRequest, res, next) => {
+  try {
+    const data = await userService.getMe(req.userId!);
+    res.json({ data });
+  } catch (e) {
+    next(e);
+  }
+});
 
 authRouter.post(
   "/otp/send",

@@ -113,6 +113,7 @@ model City {
   users        User[]
   plans        Plan[]
   communities  Community[]
+  socialSpots  SocialSpot[]
 }
 
 model Locality {
@@ -140,6 +141,7 @@ model Category {
   sortOrder Int      @default(0) @map("sort_order")
   isActive  Boolean  @default(true) @map("is_active")
   plans     Plan[]
+  socialSpots SocialSpot[]
 }
 
 model Vibe {
@@ -162,12 +164,14 @@ model Interest {
 
 model User {
   id                   String              @id @default(uuid())
-  phone                String              @unique
+  phone                String?             @unique
   phoneVerifiedAt      DateTime?           @map("phone_verified_at")
   email                String?             @unique
+  passwordHash         String?             @map("password_hash")
   name                 String
   username             String              @unique
   bio                  String?
+  discoveryTagline     String?             @map("discovery_tagline")
   dob                  DateTime?           @db.Date
   ageBand              String?             @map("age_band")
   gender               Gender?
@@ -209,6 +213,29 @@ model User {
   communityMembers   CommunityMember[]
   communityPosts     CommunityPost[]
   hostRatingsReceived PlanRating[]       @relation("HostRated")
+}
+
+model SocialSpot {
+  id          String   @id @default(uuid())
+  cityId      String   @map("city_id")
+  categoryId  Int      @map("category_id")
+  name        String
+  slug        String   @unique
+  description String?
+  address     String?
+  lat         Float
+  lng         Float
+  popularity  Int      @default(50)
+  vibeTags    String[] @default([]) @map("vibe_tags")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  city     City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@index([cityId])
+  @@index([categoryId])
+  @@index([lat, lng])
 }
 
 model UserInterest {
