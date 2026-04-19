@@ -13,6 +13,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { api } from "../api/client";
 import type { RootStackParamList } from "../navigation/types";
+import { PlanPlaceThumb } from "../components/PlanPlaceThumb";
 
 type Props = NativeStackScreenProps<RootStackParamList, "PlanDetail">;
 
@@ -21,6 +22,9 @@ type Plan = {
   title: string;
   description: string | null;
   locationName: string;
+  lat?: number | null;
+  lng?: number | null;
+  mapPreviewUrl?: string | null;
   startTime: string;
   participantCount: number;
   maxParticipants: number;
@@ -89,6 +93,15 @@ export function PlanDetailScreen({ route }: Props) {
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={styles.inner}>
+      <View style={styles.previewRow}>
+        <PlanPlaceThumb
+          mapPreviewUrl={plan.mapPreviewUrl}
+          lat={plan.lat ?? undefined}
+          lng={plan.lng ?? undefined}
+          size={120}
+          borderRadius={16}
+        />
+      </View>
       <Text style={styles.title}>{plan.title}</Text>
       <Text style={styles.host}>
         Host: {plan.host.name} (@{plan.host.username}) · trust {plan.host.hostScore}
@@ -140,6 +153,7 @@ export function PlanDetailScreen({ route }: Props) {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: "#0f0f10" },
   inner: { padding: 20, paddingBottom: 40 },
+  previewRow: { alignItems: "center", marginBottom: 16 },
   center: {
     flex: 1,
     justifyContent: "center",

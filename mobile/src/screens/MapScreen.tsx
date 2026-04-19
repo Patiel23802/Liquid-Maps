@@ -26,6 +26,9 @@ const MUMBAI: Region = {
   longitudeDelta: 0.12,
 };
 
+/** Match home default: plans within this distance when GPS is available. */
+const MAP_RADIUS_KM = 10;
+
 export function MapScreen() {
   const navigation = useNavigation();
   const { me } = useAuth();
@@ -53,17 +56,21 @@ export function MapScreen() {
   const fetchPins = useCallback(
     async (region: Region) => {
       if (!cityId) return;
-      const { north, south, east, west } = regionToBounds(region);
       setLoading(true);
       setErr(null);
       try {
-        const q = new URLSearchParams({
-          cityId,
-          north: String(north),
-          south: String(south),
-          east: String(east),
-          west: String(west),
-        });
+        const q = new URLSearchParams({ cityId });
+        if (userLocation) {
+          q.set("lat", String(userLocation.latitude));
+          q.set("lng", String(userLocation.longitude));
+          q.set("radiusKm", String(MAP_RADIUS_KM));
+        } else {
+          const { north, south, east, west } = regionToBounds(region);
+          q.set("north", String(north));
+          q.set("south", String(south));
+          q.set("east", String(east));
+          q.set("west", String(west));
+        }
         const data = await api<PlanMapPin[]>(`/plans/map?${q.toString()}`, {
           auth: false,
         });
@@ -75,7 +82,7 @@ export function MapScreen() {
         setLoading(false);
       }
     },
-    [cityId]
+    [cityId, userLocation]
   );
 
   useEffect(() => {
@@ -125,9 +132,9 @@ export function MapScreen() {
 
   const onRegionChangeComplete = useCallback(
     (region: Region) => {
-      fetchPins(region);
+      if (!userLocation) fetchPins(region);
     },
-    [fetchPins]
+    [fetchPins, userLocation]
   );
 
   const onPinPress = useCallback(

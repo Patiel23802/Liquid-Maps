@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
+import { PlanPlaceThumb } from "../components/PlanPlaceThumb";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { api } from "../api/client";
@@ -20,6 +21,9 @@ type Item = {
   title: string;
   locationName: string;
   startTime: string;
+  lat?: number;
+  lng?: number;
+  mapPreviewUrl?: string;
   womenOnly?: boolean;
   verifiedOnly?: boolean;
 };
@@ -69,8 +73,19 @@ export function DiscoverScreen() {
                 navigation.navigate("PlanDetail", { planId: item.id })
               }
             >
-              <Text style={styles.title}>{item.title}</Text>
-              <Text style={styles.meta}>{item.locationName}</Text>
+              <View style={styles.cardTop}>
+                <PlanPlaceThumb
+                  mapPreviewUrl={item.mapPreviewUrl}
+                  lat={item.lat}
+                  lng={item.lng}
+                  size={52}
+                  borderRadius={12}
+                />
+                <View style={styles.cardTopText}>
+                  <Text style={styles.title}>{item.title}</Text>
+                  <Text style={styles.meta}>{item.locationName}</Text>
+                </View>
+              </View>
               <View style={styles.row}>
                 {item.verifiedOnly ? (
                   <Text style={styles.tag}>Verified only</Text>
@@ -104,6 +119,8 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
+  cardTop: { flexDirection: "row", alignItems: "center", gap: 14 },
+  cardTopText: { flex: 1, minWidth: 0 },
   title: { fontSize: 17, fontWeight: "600", color: "#faf7f2" },
   meta: { fontSize: 14, color: "#a8a29e", marginTop: 4 },
   row: { flexDirection: "row", gap: 8, marginTop: 8 },

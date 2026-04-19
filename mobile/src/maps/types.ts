@@ -2,6 +2,8 @@ import type { Region } from "react-native-maps";
 
 export type PlanMapPin = {
   id: string;
+  title: string;
+  locationName: string;
   lat: number;
   lng: number;
   startTime: string;
@@ -10,6 +12,7 @@ export type PlanMapPin = {
   maxParticipants: number;
   verifiedOnly: boolean;
   womenOnly: boolean;
+  mapPreviewUrl?: string;
 };
 
 export type MapPlansMapProps = {

@@ -14,6 +14,7 @@ module.exports = {
     extra: {
       ...(appJson.expo.extra ?? {}),
       hasGoogleMapsKey: Boolean(googleMapsApiKey),
+      googleMapsApiKey: googleMapsApiKey || undefined,
     },
     ios: {
       ...appJson.expo.ios,
