@@ -18,6 +18,8 @@ export type MapPlansMapProps = {
   onPinPress: (planId: string) => void;
   onRegionChangeComplete: (region: Region) => void;
   userLocation?: { latitude: number; longitude: number } | null;
+  /** Highlight discovery radius in meters (e.g. radiusKm * 1000). */
+  radiusHighlightM?: number;
 };
 
 export function regionToBounds(region: Region): {

@@ -15,12 +15,16 @@ import {
 
 export type Me = {
   id: string;
-  phone: string;
+  phone: string | null;
+  email?: string | null;
   name: string;
   username: string;
+  bio?: string | null;
+  discoveryTagline?: string | null;
   onboardingCompleted: boolean;
   city: { id: string; name: string; slug: string } | null;
   primaryVibeId: number | null;
+  interestIds?: number[];
 };
 
 type AuthCtx = {
@@ -45,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const data = await api<Me>("/me", { method: "GET" });
+      const data = await api<Me>("/users/me", { method: "GET" });
       setMe(data);
     } catch {
       setMe(null);

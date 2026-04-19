@@ -1,12 +1,16 @@
 import React, { useCallback, useRef } from "react";
 import { StyleSheet, View, Platform } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from "react-native-maps";
+import MapView, {
+  Marker,
+  Circle,
+  PROVIDER_GOOGLE,
+  type Region,
+} from "react-native-maps";
 import { googleDarkMapStyle } from "./googleDarkMapStyle";
 import type { MapPlansMapProps } from "./types";
 
 /**
  * Google Maps implementation. Uses PROVIDER_GOOGLE on iOS + Android when native keys are set (app.config.js).
- * Swap this file for another provider while keeping MapScreen on ./types.
  */
 export function GooglePlansMapView({
   initialRegion,
@@ -14,6 +18,7 @@ export function GooglePlansMapView({
   onPinPress,
   onRegionChangeComplete,
   userLocation,
+  radiusHighlightM,
 }: MapPlansMapProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,6 +48,14 @@ export function GooglePlansMapView({
         showsMyLocationButton={false}
         mapType="standard"
       >
+        {userLocation && radiusHighlightM && radiusHighlightM > 0 ? (
+          <Circle
+            center={userLocation}
+            radius={radiusHighlightM}
+            strokeColor="rgba(240,132,255,0.55)"
+            fillColor="rgba(240,132,255,0.06)"
+          />
+        ) : null}
         {userLocation ? (
           <Marker
             coordinate={userLocation}

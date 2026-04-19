@@ -3,9 +3,9 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Text, View, StyleSheet, Platform } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { HomeScreen } from "../screens/HomeScreen";
-import { DiscoverScreen } from "../screens/DiscoverScreen";
-import { MapScreen } from "../screens/MapScreen";
-import { CommunitiesScreen } from "../screens/CommunitiesScreen";
+import { SocialSpotsScreen } from "../screens/SocialSpotsScreen";
+import { CreateTabScreen } from "../screens/CreateTabScreen";
+import { NotificationsScreen } from "../screens/NotificationsScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import type { TabParamList } from "./types";
 
@@ -48,16 +48,38 @@ export function MainTabNavigator() {
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: tabIcon("home"),
+          tabBarIcon: tabIcon("map"),
           tabBarLabel: ({ focused }) => tabLabel(focused, "Home"),
         }}
       />
       <Tab.Screen
-        name="Discover"
-        component={DiscoverScreen}
+        name="Explore"
+        component={SocialSpotsScreen}
         options={{
-          tabBarIcon: tabIcon("explore"),
-          tabBarLabel: ({ focused }) => tabLabel(focused, "Discover"),
+          tabBarIcon: tabIcon("local-fire-department"),
+          tabBarLabel: ({ focused }) => tabLabel(focused, "Explore"),
+        }}
+      />
+      <Tab.Screen
+        name="Create"
+        component={CreateTabScreen}
+        options={{
+          tabBarIcon: tabIcon("add-circle"),
+          tabBarLabel: ({ focused }) => tabLabel(focused, "Create"),
+        }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            e.preventDefault();
+            navigation.getParent()?.navigate("CreatePlan" as never);
+          },
+        })}
+      />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          tabBarIcon: tabIcon("notifications"),
+          tabBarLabel: ({ focused }) => tabLabel(focused, "Alerts"),
         }}
       />
       <Tab.Screen
@@ -66,22 +88,6 @@ export function MainTabNavigator() {
         options={{
           tabBarIcon: tabIcon("person"),
           tabBarLabel: ({ focused }) => tabLabel(focused, "Profile"),
-        }}
-      />
-      <Tab.Screen
-        name="Communities"
-        component={CommunitiesScreen}
-        options={{
-          tabBarIcon: tabIcon("diversity-1"),
-          tabBarLabel: ({ focused }) => tabLabel(focused, "Groups"),
-        }}
-      />
-      <Tab.Screen
-        name="Map"
-        component={MapScreen}
-        options={{
-          tabBarIcon: tabIcon("map"),
-          tabBarLabel: ({ focused }) => tabLabel(focused, "Map"),
         }}
       />
     </Tab.Navigator>

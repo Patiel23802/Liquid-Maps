@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -14,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../api/client";
 import type { RootStackParamList } from "../navigation/types";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -23,9 +25,35 @@ export function ProfileScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
 
+  const stackNav = useCallback(() => {
+    return navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+  }, [navigation]);
+
   const [invisibleMode, setInvisibleMode] = useState(true);
   const [haptics, setHaptics] = useState(false);
   const [radius, setRadius] = useState(50);
+  const [hostedCount, setHostedCount] = useState(0);
+  const [joinedCount, setJoinedCount] = useState(0);
+
+  const loadCounts = useCallback(async () => {
+    if (!me) return;
+    try {
+      const [hosted, joined] = await Promise.all([
+        api<{ id: string }[]>("/users/me/events"),
+        api<{ id: string }[]>("/users/me/joined-events"),
+      ]);
+      setHostedCount(hosted.length);
+      setJoinedCount(joined.length);
+    } catch {
+      /* ignore */
+    }
+  }, [me]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadCounts();
+    }, [loadCounts])
+  );
 
   const displayName = me?.name?.trim() || "—";
   const subtitle = useMemo(() => {
@@ -70,18 +98,28 @@ export function ProfileScreen() {
           <View style={styles.heroText}>
             <Text style={styles.heroName}>{displayName}</Text>
             <Text style={styles.heroSub}>{subtitle}</Text>
+            {me?.discoveryTagline ? (
+              <Text style={styles.tagline}>{me.discoveryTagline}</Text>
+            ) : null}
           </View>
         </View>
+
+        <Pressable
+          style={styles.editProfile}
+          onPress={() => stackNav()?.navigate("EditProfile")}
+        >
+          <Text style={styles.editProfileText}>Edit profile & interests</Text>
+        </Pressable>
 
         {/* Stats grid */}
         <View style={styles.statsGrid}>
           <BlurView intensity={28} tint="dark" style={[styles.statCard, styles.statCardPrimary]}>
-            <Text style={styles.statValuePrimary}>42</Text>
-            <Text style={styles.statLabel}>Events Attended</Text>
+            <Text style={styles.statValuePrimary}>{hostedCount}</Text>
+            <Text style={styles.statLabel}>Plans hosted</Text>
           </BlurView>
           <BlurView intensity={28} tint="dark" style={[styles.statCard, styles.statCardSecondary]}>
-            <Text style={styles.statValueSecondary}>819</Text>
-            <Text style={styles.statLabel}>Connections</Text>
+            <Text style={styles.statValueSecondary}>{joinedCount}</Text>
+            <Text style={styles.statLabel}>Plans joined</Text>
           </BlurView>
         </View>
 
@@ -183,7 +221,7 @@ export function ProfileScreen() {
         {!me?.onboardingCompleted ? (
           <Pressable
             style={styles.primaryCta}
-            onPress={() => navigation.navigate("Onboarding")}
+            onPress={() => stackNav()?.navigate("Onboarding")}
           >
             <Text style={styles.primaryCtaText}>Finish onboarding</Text>
           </Pressable>
@@ -268,6 +306,24 @@ const styles = StyleSheet.create({
   },
   heroText: { alignItems: "center", gap: 6 },
   heroName: { fontSize: 34, fontWeight: "900", color: "#e9e6f7", letterSpacing: -0.5 },
+  tagline: {
+    marginTop: 8,
+    textAlign: "center",
+    fontSize: 14,
+    color: "rgba(233,230,247,0.88)",
+    fontWeight: "600",
+    paddingHorizontal: 12,
+  },
+  editProfile: {
+    marginTop: 4,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.35)",
+    backgroundColor: "rgba(34,211,238,0.10)",
+  },
+  editProfileText: { color: "#67e8f9", fontWeight: "900", fontSize: 14 },
   heroSub: {
     fontSize: 12,
     fontWeight: "800",

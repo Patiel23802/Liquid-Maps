@@ -1,23 +1,17 @@
+import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "../config";
+import {
+  clearTokens,
+  getAccessToken,
+  http,
+  setTokens,
+} from "./http";
 
-const ACCESS = "@socialise/access";
-const REFRESH = "@socialise/refresh";
+export { getAccessToken, setTokens, clearTokens } from "./http";
 
-export async function getAccessToken(): Promise<string | null> {
-  return AsyncStorage.getItem(ACCESS);
-}
-
-export async function setTokens(access: string, refresh: string): Promise<void> {
-  await AsyncStorage.multiSet([
-    [ACCESS, access],
-    [REFRESH, refresh],
-  ]);
-}
-
-export async function clearTokens(): Promise<void> {
-  await AsyncStorage.multiRemove([ACCESS, REFRESH]);
-}
+const ACCESS_KEY = "@socialise/access";
+const REFRESH_KEY = "@socialise/refresh";
 
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -30,45 +24,50 @@ export async function api<T>(
   } = {}
 ): Promise<T> {
   const { method = "GET", body, auth = true } = options;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (auth) {
-    const t = await getAccessToken();
-    if (t) headers.Authorization = `Bearer ${t}`;
-  }
-  let res: Response;
+  const url = path.startsWith("/") ? path : `/${path}`;
   try {
-    res = await fetch(`${API_BASE}/api/v1${path}`, {
+    const res = await http.request<{
+      data?: T;
+      error?: { message?: string; code?: string };
+    }>({
+      url,
       method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      data: body,
+      skipAuth: auth === false,
     });
-  } catch {
-    throw new Error(
-      `Cannot reach API (${API_BASE}). Start the backend (npm run dev in /backend). On a physical phone, set EXPO_PUBLIC_API_URL=http://YOUR_MAC_LAN_IP:4000 in mobile/.env`
-    );
+    if (res.status >= 400) {
+      throw new Error(res.data?.error?.message ?? `HTTP ${res.status}`);
+    }
+    return res.data.data as T;
+  } catch (e) {
+    if (axios.isAxiosError(e)) {
+      const msg =
+        (e.response?.data as { error?: { message?: string } })?.error
+          ?.message ?? e.message;
+      if (!e.response) {
+        throw new Error(
+          `Cannot reach API (${API_BASE}). Start the backend (npm run dev in /backend). On a physical phone, set EXPO_PUBLIC_API_URL=http://YOUR_MAC_LAN_IP:4000 in mobile/.env`
+        );
+      }
+      throw new Error(msg || `HTTP ${e.response.status}`);
+    }
+    throw e instanceof Error ? e : new Error("Request failed");
   }
-  const json = (await res.json()) as {
-    data?: T;
-    error?: { message?: string; code?: string };
-  };
-  if (!res.ok) {
-    throw new Error(json.error?.message ?? `HTTP ${res.status}`);
-  }
-  return json.data as T;
 }
 
 export async function refreshAccessToken(): Promise<string | null> {
-  const r = await AsyncStorage.getItem(REFRESH);
+  const r = await AsyncStorage.getItem(REFRESH_KEY);
   if (!r) return null;
   try {
-    const data = await api<{ accessToken: string; expiresIn: number }>(
-      "/auth/refresh",
-      { method: "POST", body: { refreshToken: r }, auth: false }
-    );
-    await AsyncStorage.setItem(ACCESS, data.accessToken);
-    return data.accessToken;
+    const res = await http.post<{
+      data: { accessToken: string; expiresIn: number };
+    }>("/auth/refresh", { refreshToken: r }, { skipAuth: true });
+    if (res.status >= 400 || !res.data.data?.accessToken) {
+      await clearTokens();
+      return null;
+    }
+    await AsyncStorage.setItem(ACCESS_KEY, res.data.data.accessToken);
+    return res.data.data.accessToken;
   } catch {
     await clearTokens();
     return null;

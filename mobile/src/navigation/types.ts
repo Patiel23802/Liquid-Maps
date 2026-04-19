@@ -2,13 +2,16 @@ import type { NavigatorScreenParams } from "@react-navigation/native";
 
 export type TabParamList = {
   Home: undefined;
-  Discover: undefined;
-  Map: undefined;
-  Communities: undefined;
+  Explore: undefined;
+  Create: undefined;
+  Notifications: undefined;
   Profile: undefined;
 };
 
 export type RootStackParamList = {
+  Welcome: undefined;
+  Login: undefined;
+  Signup: undefined;
   Phone: undefined;
   Otp: { phone: string };
   Onboarding: undefined;
@@ -16,6 +19,9 @@ export type RootStackParamList = {
   PlanDetail: { planId: string };
   CreatePlan: undefined;
   Chat: { planId: string };
+  NearbyPeople: undefined;
+  EditProfile: undefined;
+  UserProfile: { userId: string };
 };
 
 declare global {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,12 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import * as Location from "expo-location";
+import * as Haptics from "expo-haptics";
 import type { Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -18,6 +21,7 @@ import { useAuth } from "../context/AuthContext";
 import { useMumbaiCityId } from "../hooks/useMumbaiCityId";
 import type { RootStackParamList } from "../navigation/types";
 import { GooglePlansMapView } from "../maps/GooglePlansMapView";
+import { regionToBounds, type PlanMapPin } from "../maps/types";
 
 type PlanCard = {
   id: string;
@@ -27,6 +31,14 @@ type PlanCard = {
   participantCount?: number;
   womenOnly?: boolean;
   verifiedOnly?: boolean;
+  category?: { slug: string; name: string };
+};
+
+type SpotRow = {
+  id: string;
+  name: string;
+  category: { name: string; slug: string };
+  distanceKm?: number;
 };
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -38,15 +50,31 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.12,
 };
 
+const CHIPS: { slug: string; label: string }[] = [
+  { slug: "football", label: "Football" },
+  { slug: "cafes", label: "Cafes" },
+  { slug: "movies", label: "Movies" },
+  { slug: "gaming", label: "Gaming" },
+  { slug: "gym", label: "Gym" },
+  { slug: "music", label: "Music" },
+];
+
+const RADIUS_OPTIONS = [3, 5, 10, 15];
+
 export function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const { me } = useAuth();
   const cityId = useMumbaiCityId(me?.city?.id);
   const insets = useSafeAreaInsets();
+  const lastRegion = useRef<Region>(DEFAULT_REGION);
+
   const [feed, setFeed] = useState<{
     happeningNow: PlanCard[];
     startingSoon: PlanCard[];
   } | null>(null);
+  const [spots, setSpots] = useState<SpotRow[]>([]);
+  const [pins, setPins] = useState<PlanMapPin[]>([]);
+  const [mapLoading, setMapLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [locErr, setLocErr] = useState<string | null>(null);
@@ -55,15 +83,60 @@ export function HomeScreen() {
     longitude: number;
   } | null>(null);
   const [initialRegion, setInitialRegion] = useState<Region>(DEFAULT_REGION);
+  const [categorySlug, setCategorySlug] = useState<string | undefined>();
+  const [radiusKm, setRadiusKm] = useState(10);
+  const [sheetPlanId, setSheetPlanId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const stackNav = useCallback(() => {
+    return navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+  }, [navigation]);
+
+  const fetchPins = useCallback(
+    async (region: Region) => {
+      if (!cityId) return;
+      lastRegion.current = region;
+      const { north, south, east, west } = regionToBounds(region);
+      const q = new URLSearchParams({
+        cityId,
+        north: String(north),
+        south: String(south),
+        east: String(east),
+        west: String(west),
+      });
+      if (categorySlug) q.set("category", categorySlug);
+      setMapLoading(true);
+      try {
+        const data = await api<PlanMapPin[]>(`/events/map?${q.toString()}`, {
+          auth: false,
+        });
+        setPins(data);
+      } catch {
+        setPins([]);
+      } finally {
+        setMapLoading(false);
+      }
+    },
+    [cityId, categorySlug]
+  );
+
+  useEffect(() => {
+    if (!cityId) return;
+    fetchPins(lastRegion.current);
+  }, [cityId, categorySlug, fetchPins]);
+
+  const loadFeed = useCallback(async () => {
     if (!cityId) return;
     setErr(null);
     try {
+      const qs = new URLSearchParams({ cityId });
+      if (userLocation) {
+        qs.set("lat", String(userLocation.latitude));
+        qs.set("lng", String(userLocation.longitude));
+      }
       const data = await api<{
         happeningNow: PlanCard[];
         startingSoon: PlanCard[];
-      }>(`/feed/home?cityId=${cityId}`, { method: "GET" });
+      }>(`/feed/home?${qs.toString()}`, { method: "GET" });
       setFeed({
         happeningNow: data.happeningNow,
         startingSoon: data.startingSoon,
@@ -73,11 +146,37 @@ export function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [cityId]);
+  }, [cityId, userLocation]);
 
-  React.useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => {
+    loadFeed();
+  }, [loadFeed]);
+
+  const loadSpots = useCallback(async () => {
+    if (!cityId) return;
+    const q = new URLSearchParams({
+      cityId,
+      radiusKm: String(radiusKm),
+      limit: "8",
+    });
+    if (userLocation) {
+      q.set("lat", String(userLocation.latitude));
+      q.set("lng", String(userLocation.longitude));
+    }
+    if (categorySlug) q.set("category", categorySlug);
+    try {
+      const data = await api<SpotRow[]>(`/spots?${q.toString()}`, {
+        auth: false,
+      });
+      setSpots(data.slice(0, 4));
+    } catch {
+      setSpots([]);
+    }
+  }, [cityId, userLocation, radiusKm, categorySlug]);
+
+  useEffect(() => {
+    loadSpots();
+  }, [loadSpots]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +202,12 @@ export function HomeScreen() {
           latitude: coords.latitude,
           longitude: coords.longitude,
         }));
+        fetchPins({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.12,
+          longitudeDelta: 0.12,
+        });
       } catch (e) {
         if (cancelled) return;
         setLocErr(e instanceof Error ? e.message : "Failed to get location");
@@ -111,16 +216,40 @@ export function HomeScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fetchPins]);
 
-  const liveEvents = useMemo(() => feed?.happeningNow?.slice(0, 2) ?? [], [feed]);
-  const socialSpots = useMemo(() => feed?.startingSoon?.slice(0, 3) ?? [], [feed]);
+  const liveEvents = useMemo(() => {
+    const xs = feed?.happeningNow ?? [];
+    const f = categorySlug
+      ? xs.filter((p) => p.category?.slug === categorySlug)
+      : xs;
+    return f.slice(0, 2);
+  }, [feed, categorySlug]);
+
+  const spotPreview = useMemo(() => spots.slice(0, 2), [spots]);
+
   const cityName = me?.city?.name?.trim();
+
+  const sheetPin = useMemo(
+    () => pins.find((p) => p.id === sheetPlanId) ?? null,
+    [pins, sheetPlanId]
+  );
+
+  const radiusFillPct = useMemo(() => {
+    const i = RADIUS_OPTIONS.indexOf(radiusKm);
+    if (i < 0) return 40;
+    return ((i + 1) / RADIUS_OPTIONS.length) * 100;
+  }, [radiusKm]);
+
+  const toggleChip = (slug: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCategorySlug((prev) => (prev === slug ? undefined : slug));
+  };
 
   if (!cityId && loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#ea580c" />
+        <ActivityIndicator size="large" color="#67e8f9" />
       </View>
     );
   }
@@ -138,15 +267,21 @@ export function HomeScreen() {
         <>
           <GooglePlansMapView
             initialRegion={initialRegion}
-            pins={[]}
+            pins={pins}
             userLocation={userLocation}
-            onPinPress={() => {}}
-            onRegionChangeComplete={() => {}}
+            radiusHighlightM={userLocation ? radiusKm * 1000 : undefined}
+            onPinPress={(id) => setSheetPlanId(id)}
+            onRegionChangeComplete={(region) => {
+              fetchPins(region);
+            }}
           />
 
           <View pointerEvents="none" style={styles.vignette} />
 
-          <View style={[styles.topAppBar, { paddingTop: Math.max(insets.top, 12) }]} pointerEvents="box-none">
+          <View
+            style={[styles.topAppBar, { paddingTop: Math.max(insets.top, 12) }]}
+            pointerEvents="box-none"
+          >
             <BlurView intensity={35} tint="dark" style={styles.topAppBarInner}>
               <View style={styles.brandRow}>
                 <View style={styles.brandDot} />
@@ -154,7 +289,7 @@ export function HomeScreen() {
               </View>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => navigation.navigate("CreatePlan")}
+                onPress={() => stackNav()?.navigate("CreatePlan")}
                 style={styles.explorePill}
               >
                 <Text style={styles.explorePillText}>+ Plan</Text>
@@ -162,59 +297,95 @@ export function HomeScreen() {
             </BlurView>
           </View>
 
+          <View style={styles.cityPill} pointerEvents="box-none">
+            <Text style={styles.cityPillText}>
+              {cityName ? `Explore • ${cityName}` : "Explore"}
+            </Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipRow}
+          >
+            {CHIPS.map((c) => {
+              const on = categorySlug === c.slug;
+              return (
+                <Pressable
+                  key={c.slug}
+                  onPress={() => toggleChip(c.slug)}
+                  style={[styles.chip, on ? styles.chipOn : null]}
+                >
+                  <Text style={[styles.chipText, on ? styles.chipTextOn : null]}>
+                    {c.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
           <View style={styles.floatLayer} pointerEvents="box-none">
             <View style={styles.topRowWrap} pointerEvents="box-none">
               <View pointerEvents="none" style={styles.topRowGlowPurple} />
               <View pointerEvents="none" style={styles.topRowGlowCyan} />
               <View style={styles.topRow} pointerEvents="box-none">
-              <BlurView intensity={30} tint="dark" style={[styles.glassCard, styles.cardLeft]}>
-                <Text style={styles.cardKicker}>Live Events</Text>
-                {loading && !feed ? (
-                  <ActivityIndicator color="#67e8f9" style={{ marginTop: 10 }} />
-                ) : liveEvents.length ? (
-                  liveEvents.map((p) => (
-                    <Pressable
-                      key={p.id}
-                      onPress={() => navigation.navigate("PlanDetail", { planId: p.id })}
-                      style={styles.cardRow}
-                    >
-                      <Text numberOfLines={1} style={styles.cardRowTitle}>
-                        {p.title}
-                      </Text>
-                      <Text numberOfLines={1} style={styles.cardRowMeta}>
-                        {p.locationName}
-                      </Text>
-                    </Pressable>
-                  ))
-                ) : (
-                  <Text style={styles.cardEmpty}>Nothing live right now.</Text>
-                )}
-              </BlurView>
+                <BlurView
+                  intensity={30}
+                  tint="dark"
+                  style={[styles.glassCard, styles.cardLeft]}
+                >
+                  <Text style={styles.cardKicker}>Live Events</Text>
+                  {mapLoading ? (
+                    <ActivityIndicator color="#67e8f9" style={{ marginTop: 10 }} />
+                  ) : null}
+                  {loading && !feed ? (
+                    <ActivityIndicator color="#67e8f9" style={{ marginTop: 10 }} />
+                  ) : liveEvents.length ? (
+                    liveEvents.map((p) => (
+                      <Pressable
+                        key={p.id}
+                        onPress={() =>
+                          stackNav()?.navigate("PlanDetail", { planId: p.id })
+                        }
+                        style={styles.cardRow}
+                      >
+                        <Text numberOfLines={1} style={styles.cardRowTitle}>
+                          {p.title}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.cardRowMeta}>
+                          {p.locationName}
+                        </Text>
+                      </Pressable>
+                    ))
+                  ) : (
+                    <Text style={styles.cardEmpty}>Nothing live right now.</Text>
+                  )}
+                </BlurView>
 
-              <BlurView intensity={30} tint="dark" style={[styles.glassCard, styles.cardRight]}>
-                <Text style={styles.cardKicker}>Social Spots</Text>
-                {loading && !feed ? (
-                  <ActivityIndicator color="#f0abfc" style={{ marginTop: 10 }} />
-                ) : socialSpots.length ? (
-                  socialSpots.map((p) => (
-                    <Pressable
-                      key={p.id}
-                      onPress={() => navigation.navigate("PlanDetail", { planId: p.id })}
-                      style={styles.socialRow}
-                    >
-                      <Text numberOfLines={1} style={styles.socialTitle}>
-                        {p.title}
-                      </Text>
-                      <Text numberOfLines={1} style={styles.socialMeta}>
-                        {p.locationName}
-                      </Text>
-                    </Pressable>
-                  ))
-                ) : (
-                  <Text style={styles.cardEmpty}>No spots yet.</Text>
-                )}
-              </BlurView>
-            </View>
+                <BlurView
+                  intensity={30}
+                  tint="dark"
+                  style={[styles.glassCard, styles.cardRight]}
+                >
+                  <Text style={styles.cardKicker}>Social Spots</Text>
+                  {spotPreview.length ? (
+                    spotPreview.map((s) => (
+                      <View key={s.id} style={styles.socialRow}>
+                        <Text numberOfLines={1} style={styles.socialTitle}>
+                          {s.name}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.socialMeta}>
+                          {s.category.name}
+                          {s.distanceKm != null ? ` • ${s.distanceKm} km` : ""}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.cardEmpty}>No spots in this filter.</Text>
+                  )}
+                </BlurView>
+              </View>
             </View>
 
             <View style={styles.bottomRow} pointerEvents="box-none">
@@ -227,28 +398,95 @@ export function HomeScreen() {
                     <Text style={styles.avatarMoreText}>+12</Text>
                   </View>
                 </BlurView>
-                <BlurView intensity={24} tint="dark" style={styles.nearbyPill}>
-                  <Text style={styles.nearbyPillText}>Nearby People</Text>
-                </BlurView>
+                <Pressable
+                  onPress={() => stackNav()?.navigate("NearbyPeople")}
+                  accessibilityRole="button"
+                >
+                  <BlurView intensity={24} tint="dark" style={styles.nearbyPill}>
+                    <Text style={styles.nearbyPillText}>Nearby People</Text>
+                  </BlurView>
+                </Pressable>
               </View>
 
               <BlurView intensity={30} tint="dark" style={styles.radiusCard}>
                 <View style={styles.radiusHeader}>
                   <Text style={styles.radiusLabel}>Search Radius</Text>
                   <Text style={styles.radiusValue}>
-                    5.2 <Text style={styles.radiusUnit}>km</Text>
+                    {radiusKm}{" "}
+                    <Text style={styles.radiusUnit}>km</Text>
                   </Text>
                 </View>
+                <View style={styles.radiusPickRow}>
+                  {RADIUS_OPTIONS.map((r) => (
+                    <Pressable
+                      key={r}
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        setRadiusKm(r);
+                      }}
+                      style={[
+                        styles.radiusChip,
+                        radiusKm === r ? styles.radiusChipOn : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.radiusChipText,
+                          radiusKm === r ? styles.radiusChipTextOn : null,
+                        ]}
+                      >
+                        {r}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
                 <View style={styles.sliderTrack}>
-                  <View style={styles.sliderFill} />
+                  <View style={[styles.sliderFill, { width: `${radiusFillPct}%` }]} />
                 </View>
                 <View style={styles.sliderTicks}>
-                  <Text style={styles.sliderTickText}>1km</Text>
-                  <Text style={styles.sliderTickText}>10km</Text>
+                  <Text style={styles.sliderTickText}>near</Text>
+                  <Text style={styles.sliderTickText}>wide</Text>
                 </View>
               </BlurView>
             </View>
           </View>
+
+          <Modal
+            visible={sheetPlanId != null}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setSheetPlanId(null)}
+          >
+            <View style={styles.sheetBackdrop}>
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() => setSheetPlanId(null)}
+              />
+              <BlurView intensity={40} tint="dark" style={styles.sheet}>
+                {sheetPin ? (
+                  <>
+                    <Text style={styles.sheetTitle}>Plan on map</Text>
+                    <Text style={styles.sheetMeta}>
+                      {new Date(sheetPin.startTime).toLocaleString()} ·{" "}
+                      {sheetPin.participantCount}/{sheetPin.maxParticipants} joined
+                    </Text>
+                    <Pressable
+                      style={styles.sheetBtn}
+                      onPress={() => {
+                        const id = sheetPin.id;
+                        setSheetPlanId(null);
+                        stackNav()?.navigate("PlanDetail", { planId: id });
+                      }}
+                    >
+                      <Text style={styles.sheetBtnText}>Open details</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Text style={styles.sheetTitle}>Plan</Text>
+                )}
+              </BlurView>
+            </View>
+          </Modal>
 
           {err ? (
             <View style={styles.toast}>
@@ -260,9 +498,6 @@ export function HomeScreen() {
               <Text style={styles.toastText}>{locErr}</Text>
             </View>
           ) : null}
-          <View style={styles.cityPill} pointerEvents="none">
-            <Text style={styles.cityPillText}>{cityName ? `Explore • ${cityName}` : "Explore"}</Text>
-          </View>
         </>
       )}
     </View>
@@ -281,14 +516,12 @@ const styles = StyleSheet.create({
   webTitle: { fontSize: 26, fontWeight: "800", color: "#f5d0fe" },
   webBody: { marginTop: 10, fontSize: 14, color: "#a8a29e", textAlign: "center" },
 
-  // background accents
   vignette: {
     position: "absolute",
     inset: 0,
     backgroundColor: "rgba(0,0,0,0.25)",
   },
 
-  // top app bar
   topAppBar: {
     position: "absolute",
     top: 0,
@@ -343,7 +576,34 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // floating layer
+  chipScroll: {
+    position: "absolute",
+    top: 100,
+    left: 0,
+    right: 0,
+    maxHeight: 44,
+    zIndex: 3,
+  },
+  chipRow: {
+    paddingHorizontal: 12,
+    gap: 8,
+    alignItems: "center",
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(13,13,24,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  chipOn: {
+    backgroundColor: "rgba(240,132,255,0.18)",
+    borderColor: "rgba(240,132,255,0.45)",
+  },
+  chipText: { color: "#a8a29e", fontSize: 12, fontWeight: "800" },
+  chipTextOn: { color: "#f5d0fe" },
+
   floatLayer: {
     position: "absolute",
     left: 0,
@@ -351,13 +611,11 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     paddingHorizontal: 16,
-    paddingTop: 118,
-    paddingBottom: 110, // keep above tab bar
+    paddingTop: 148,
+    paddingBottom: 110,
     justifyContent: "space-between",
   },
-  topRowWrap: {
-    position: "relative",
-  },
+  topRowWrap: { position: "relative" },
   topRowGlowPurple: {
     position: "absolute",
     left: -36,
@@ -366,7 +624,6 @@ const styles = StyleSheet.create({
     height: 240,
     borderRadius: 999,
     backgroundColor: "rgba(240, 132, 255, 0.18)",
-    transform: [{ scale: 1 }],
   },
   topRowGlowCyan: {
     position: "absolute",
@@ -376,7 +633,6 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 999,
     backgroundColor: "rgba(0, 227, 253, 0.14)",
-    transform: [{ scale: 1 }],
   },
   topRow: {
     flexDirection: "row",
@@ -478,6 +734,27 @@ const styles = StyleSheet.create({
   },
   radiusValue: { color: "#67e8f9", fontSize: 18, fontWeight: "900" },
   radiusUnit: { color: "rgba(171, 169, 185, 0.95)", fontSize: 11, fontWeight: "800" },
+  radiusPickRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+    justifyContent: "space-between",
+  },
+  radiusChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: "center",
+    backgroundColor: "rgba(36,36,52,0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  radiusChipOn: {
+    borderColor: "rgba(34,211,238,0.45)",
+    backgroundColor: "rgba(34,211,238,0.12)",
+  },
+  radiusChipText: { color: "#a8a29e", fontSize: 12, fontWeight: "800" },
+  radiusChipTextOn: { color: "#67e8f9" },
   sliderTrack: {
     marginTop: 12,
     height: 6,
@@ -486,13 +763,37 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   sliderFill: {
-    width: "52%",
     height: "100%",
     borderRadius: 999,
     backgroundColor: "rgba(240, 132, 255, 0.90)",
   },
   sliderTicks: { marginTop: 10, flexDirection: "row", justifyContent: "space-between" },
   sliderTickText: { color: "rgba(171, 169, 185, 0.9)", fontSize: 10 },
+
+  sheetBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  sheet: {
+    marginHorizontal: 16,
+    marginBottom: 100,
+    borderRadius: 22,
+    overflow: "hidden",
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  sheetTitle: { fontSize: 18, fontWeight: "900", color: "#f5f5ff" },
+  sheetMeta: { marginTop: 8, fontSize: 13, color: "#a8a29e" },
+  sheetBtn: {
+    marginTop: 16,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    backgroundColor: "#67e8f9",
+  },
+  sheetBtnText: { color: "#0f0f10", fontWeight: "900", fontSize: 15 },
 
   toast: {
     position: "absolute",
