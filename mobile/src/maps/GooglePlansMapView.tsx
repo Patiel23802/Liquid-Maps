@@ -25,6 +25,8 @@ export function GooglePlansMapView({
   onRegionChangeComplete,
   userLocation,
   radiusHighlightM,
+  mapType = "standard",
+  threeDTrigger = 0,
 }: MapPlansMapProps) {
   const mapRef = useRef<MapView>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,11 +39,11 @@ export function GooglePlansMapView({
   };
 
   const applyPerspectiveCamera = useCallback(
-    (opts?: { softer?: boolean }) => {
+    (opts?: { softer?: boolean; stronger?: boolean }) => {
       const map = mapRef.current;
       if (!map) return;
-      const pitch = opts?.softer ? 38 : 52;
-      const heading = opts?.softer ? 12 : 24;
+      const pitch = opts?.softer ? 38 : opts?.stronger ? 66 : 52;
+      const heading = opts?.softer ? 12 : opts?.stronger ? 42 : 24;
       map.animateCamera(
         {
           center: {
@@ -50,9 +52,11 @@ export function GooglePlansMapView({
           },
           pitch,
           heading,
-          zoom: zoomFromLatitudeDelta(initialRegion.latitudeDelta),
+          zoom: opts?.stronger
+            ? Math.max(16.8, zoomFromLatitudeDelta(initialRegion.latitudeDelta))
+            : zoomFromLatitudeDelta(initialRegion.latitudeDelta),
         },
-        { duration: opts?.softer ? 500 : 900 }
+        { duration: opts?.softer ? 500 : opts?.stronger ? 750 : 900 }
       );
     },
     [
@@ -61,6 +65,12 @@ export function GooglePlansMapView({
       initialRegion.latitudeDelta,
     ]
   );
+
+  useEffect(() => {
+    if (!threeDTrigger) return;
+    // If the user taps "3D", push a stronger perspective camera.
+    applyPerspectiveCamera({ stronger: true });
+  }, [threeDTrigger, applyPerspectiveCamera]);
 
   useEffect(() => {
     if (!userLocation || userCameraDoneRef.current || !introDoneRef.current) {
@@ -97,7 +107,11 @@ export function GooglePlansMapView({
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         initialRegion={initialRegion}
-        customMapStyle={googleDarkMapStyle}
+        customMapStyle={
+          mapType === "satellite" || mapType === "hybrid"
+            ? undefined
+            : googleDarkMapStyle
+        }
         onRegionChangeComplete={handleRegionChangeComplete}
         onMapReady={() => {
           if (introDoneRef.current) return;
@@ -109,7 +123,7 @@ export function GooglePlansMapView({
         }}
         showsUserLocation={false}
         showsMyLocationButton={false}
-        mapType="standard"
+        mapType={mapType}
         pitchEnabled
         rotateEnabled
         scrollEnabled

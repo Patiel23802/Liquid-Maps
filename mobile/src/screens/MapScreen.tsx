@@ -37,6 +37,10 @@ export function MapScreen() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [locErr, setLocErr] = useState<string | null>(null);
+  const [mapType, setMapType] = useState<"standard" | "terrain" | "hybrid">(
+    "standard"
+  );
+  const [threeDTrigger, setThreeDTrigger] = useState(0);
   const [userLocation, setUserLocation] = useState<{
     latitude: number;
     longitude: number;
@@ -183,6 +187,8 @@ export function MapScreen() {
         onPinPress={onPinPress}
         onRegionChangeComplete={onRegionChangeComplete}
         userLocation={userLocation}
+        mapType={mapType}
+        threeDTrigger={threeDTrigger}
       />
       <View style={styles.topBar} pointerEvents="box-none">
         <View style={styles.topBarInner} pointerEvents="auto">
@@ -190,22 +196,48 @@ export function MapScreen() {
             <Text style={styles.brandTitle}>Liquid Map</Text>
             <Text style={styles.brandSubtitle}>{title}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              if (userLocation) {
-                fetchPins({
-                  latitude: userLocation.latitude,
-                  longitude: userLocation.longitude,
-                  latitudeDelta: 0.12,
-                  longitudeDelta: 0.12,
-                });
-              }
-            }}
-            style={styles.pill}
-          >
-            <Text style={styles.pillText}>My Location</Text>
-          </Pressable>
+          <View style={styles.controlsRow}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setMapType((t) =>
+                  t === "standard" ? "terrain" : t === "terrain" ? "hybrid" : "standard"
+                );
+              }}
+              style={[styles.pill, mapType !== "standard" && styles.pillActive]}
+            >
+              <Text style={styles.pillText}>
+                {mapType === "terrain"
+                  ? "Terrain"
+                  : mapType === "hybrid"
+                    ? "Hybrid"
+                    : "Standard"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setThreeDTrigger((n) => n + 1)}
+              style={styles.pill}
+            >
+              <Text style={styles.pillText}>3D</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                if (userLocation) {
+                  fetchPins({
+                    latitude: userLocation.latitude,
+                    longitude: userLocation.longitude,
+                    latitudeDelta: 0.12,
+                    longitudeDelta: 0.12,
+                  });
+                }
+              }}
+              style={styles.pill}
+            >
+              <Text style={styles.pillText}>My Location</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
       {loading ? (
@@ -262,6 +294,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  controlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   brandTitle: {
     fontSize: 18,
     fontWeight: "800",
@@ -280,6 +317,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(34, 211, 238, 0.12)",
     borderWidth: 1,
     borderColor: "rgba(34, 211, 238, 0.25)",
+  },
+  pillActive: {
+    backgroundColor: "rgba(240, 132, 255, 0.18)",
+    borderColor: "rgba(240, 132, 255, 0.45)",
   },
   pillText: { color: "#67e8f9", fontSize: 12, fontWeight: "700" },
   loader: {

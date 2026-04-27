@@ -23,6 +23,10 @@ export type MapPlansMapProps = {
   userLocation?: { latitude: number; longitude: number } | null;
   /** Highlight discovery radius in meters (e.g. radiusKm * 1000). */
   radiusHighlightM?: number;
+  /** Google basemap type; "terrain" adds topographic styling. */
+  mapType?: "standard" | "terrain" | "satellite" | "hybrid";
+  /** Increment to trigger a 3D camera push (tilt/heading/zoom). */
+  threeDTrigger?: number;
 };
 
 export function regionToBounds(region: Region): {

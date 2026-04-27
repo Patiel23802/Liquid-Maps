@@ -6,9 +6,10 @@
  */
 export const googleDarkMapStyle = [
   // Base
-  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+  // Slightly brighter base so roads/buildings read better under overlays.
+  { elementType: "geometry", stylers: [{ color: "#1f2937" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#111827" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
 
   // Hide *all* labels by default, then selectively re-enable admin labels.
   { elementType: "labels", stylers: [{ visibility: "off" }] },
@@ -83,27 +84,87 @@ export const googleDarkMapStyle = [
   {
     featureType: "road",
     elementType: "geometry",
-    stylers: [{ color: "#38414e" }],
+    stylers: [{ color: "#4b5563" }],
   },
   {
     featureType: "road",
     elementType: "geometry.stroke",
-    stylers: [{ color: "#212a37" }],
+    stylers: [{ color: "#0b1220" }, { weight: 1.2 }],
   },
   {
     featureType: "road.highway",
     elementType: "geometry",
-    stylers: [{ color: "#746855" }],
+    stylers: [{ color: "#8b7a5a" }],
   },
   {
     featureType: "road.highway",
     elementType: "geometry.stroke",
-    stylers: [{ color: "#1f2835" }],
+    stylers: [{ color: "#0b1220" }, { weight: 1.6 }],
+  },
+  // Bring back only the most useful road labels for navigation.
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ visibility: "on" }, { color: "#cbd5e1" }],
+  },
+  {
+    featureType: "road.arterial",
+    elementType: "labels.text.fill",
+    stylers: [{ visibility: "on" }, { color: "#a5b4fc" }],
+  },
+  {
+    featureType: "road.local",
+    elementType: "labels.text.fill",
+    stylers: [{ visibility: "on" }, { color: "#93c5fd" }],
+  },
+  {
+    featureType: "road",
+    elementType: "labels.text.stroke",
+    stylers: [{ visibility: "on" }, { color: "#0b1220" }, { weight: 3 }],
+  },
+
+  // Make smaller streets and paths more visible (definition).
+  {
+    featureType: "road.arterial",
+    elementType: "geometry",
+    stylers: [{ color: "#64748b" }],
+  },
+  {
+    featureType: "road.arterial",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#0b1220" }, { weight: 1.35 }],
+  },
+  {
+    featureType: "road.local",
+    elementType: "geometry",
+    stylers: [{ color: "#56657a" }],
+  },
+  {
+    featureType: "road.local",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#0b1220" }, { weight: 1.1 }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ visibility: "on" }, { gamma: 0.9 }, { saturation: 8 }],
+  },
+
+  // Slightly lift buildings so the city reads as “defined”.
+  {
+    featureType: "building",
+    elementType: "geometry",
+    stylers: [{ color: "#121a27" }, { saturation: -10 }, { lightness: -10 }],
+  },
+  {
+    featureType: "building",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#0b1220" }, { weight: 1.3 }, { visibility: "on" }],
   },
   {
     featureType: "water",
     elementType: "geometry",
-    stylers: [{ color: "#17263c" }],
+    stylers: [{ color: "#0b203a" }],
   },
   // Optional: water labels off (we're keeping only admin names).
   { featureType: "water", elementType: "labels", stylers: [{ visibility: "off" }] },
