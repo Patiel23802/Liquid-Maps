@@ -1,0 +1,17 @@
+Give your friend this folder (or whole repo):
+
+1) SQL that creates ALL tables (pgAdmin or psql)
+   File: backend/prisma/generated_schema.sql
+   - In pgAdmin: create empty database "socialise", connect to it, Query Tool, open this file, Execute.
+   - Or: psql -h localhost -U USER -d socialise -f prisma/generated_schema.sql
+   - Then still run seed for demo rows: from backend, npm install && npm run db:seed
+
+2) Easier (no SQL): Prisma creates tables from schema
+   - Copy backend/.env.example to backend/.env and set DATABASE_URL + JWT secrets.
+   - Windows:  powershell -ExecutionPolicy Bypass -File scripts/friend-setup-db.ps1
+   - Mac/Linux: bash scripts/friend-setup-db.sh
+   (Run those from inside the backend folder.)
+
+To refresh generated_schema.sql after you change prisma/schema.prisma:
+  cd backend && npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > prisma/generated_schema.sql
+Then re-add the comment block at the top of generated_schema.sql if you want the same hints for your friend.
